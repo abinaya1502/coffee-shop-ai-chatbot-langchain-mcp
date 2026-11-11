@@ -1,0 +1,367 @@
+@startuml sequence_diagram 
+autonumber 1.0
+
+actor Client 
+participant "src/app.py" as App
+participant "src/router/mcp_server_routes.py" as Router
+participant "src/tools/tools.py" as Tool
+participant "mcp_client" as MCP_client
+participant "src/resorces/Resourse.py" as Resourse
+participant "src/location.json" as Location
+Participant "src/prompt/prompt.py" as Prompt
+participant "src/repositories/mcp_server_repository.py" as Repository 
+
+participant "src/repositories/database.py" as Database
+
+database "PostgreSQL" as DB
+
+
+
+note over App
+**App Imports**
+from fastmcp import FastMCP
+import mcp
+from contextlib import asynccontextmanager
+from routes.mcp_server_router import mcp_router
+from migrations.migration import Migration
+from migrations.seeder import Seeder
+end note
+
+
+note over Router
+**Router Imports** 
+from fastmcp import FastMCP
+from Tool.Tool import check_order_status
+from Tool.Tool import check_inventory
+from Tool.Tool import check_menu
+end note
+
+
+ 
+note over Repository
+ from repositories.database import Database
+from repositories.schema.schema import Item, Order,OrderItemMapping
+end note
+
+note Over Tool
+from repositories.mcp_server_repository import ChatbotRepository
+from routes.mcp_server_router import mcp_router
+end note
+
+note Over Resourse
+from repositories.mcp_server_repository import ChatbotRepository
+from routes.mcp_server_router import mcp_router
+end note
+
+note Over Prompt
+from routes.mcp_server_router import mcp_router
+end note
+
+
+Client -> App: POST/api/v1/chatbot{request_body: user_query}
+activate  App
+group App
+  App -> App : create instance for FastMCP by calling FastMCP Method and store it in variable app
+  App -> App : it mount the router which called mcp-router
+  App -> App : the app triggerd to run using the streamable htttp
+
+  activate Router 
+    Router -> Router : MCP Router initiallizes the FastMCP server instance  
+    Router -> Router : MCP router loads the required Tool by importing function from Tool.Tool
+    Router -> Router : Mcp router loads the requires resourse by impoting function from resourses.resourse
+    Router -> Router : Mcp Router loads thee requires promot by impoting function from prompts.prompt
+    Router ->  Tool : system register the available Tool like \ncheck_order_status(),\ncheck_inventory(),\ncheck_menu()
+    activate Tool
+        Tool -> Tool: The instance is created for the ChatbotRepository class and stored in the variable repository
+         group check_order_status() 
+                                        Tool -> Tool: The check_order_status() is triggered,which checks the status of the order
+                                        Tool -> Repository : It calls the check_order_status() method using the repository variable,passing the item as an argument and assign this to order
+                activate Repository
+
+                                        Repository -> Repository : The Repository creates an instance for the class Database to connect with the database
+                                        group function check_order_status_repo() 
+                                            Repository-> Database : With the help of the db instance,create a session with the Database
+                                            activate Database
+                                            Database -> Repository: Establishes the connection
+                                            Repository -> Repository : When the check_order_status_repo() is triggered,the order_id is received as input
+                                            group func check_order_status_repo() Try 
+                                                Repository -> Schema : The repository first queries the database to check the order status of the customer
+
+                                                note over Repository,Schema
+                                                    ** ORM OPERATION 1: CHECK ORDER STATUS**
+                                                    variable order assign db.query(Order)
+                                                    .filter(Order.order_id == order_id)
+                                                    .first()
+                                                end note
+                                                Database -> Repository : Closes the database connection
+                                                deactivate Database
+
+                                                Repository -> Repository : Create a variable status and store the order.order_status
+                                            end
+
+                                            group function check_order_status_repo() exception
+                                                note right Repository
+                                                    **Repository Exception Handler**
+                                                    except Exception as e:
+                                                        print("Error in repo",str(e))
+                                                        db.rollback()
+                                                        return None
+                                                    
+                                                end note
+                                            end
+                                               
+     
+                                                ' Repository -> Tool : Return the status of the order
+                                                deactivate Repository
+                                            end
+                                    end
+ 
+ 
+                                    
+ 
+                                    group check_inventory() 
+                                        Tool -> Tool: The check_inventory() is triggered,which checks the item inventory
+                                        Tool -> Repository : It calls the check_inventory_repo() method using the repository variable,passing the item as an argument and assign this to inventory
+                                        activate Repository
+                                            Repository -> Repository : The Repository creates an instance for the class Database to connect with the database
+                                            group function check_inventory_repo() 
+                                                Repository-> Database : With the help of the db instance,create a session with the Database
+                                                activate Database
+                                                Database -> Repository: Establishes the connection
+                                                Repository -> Repository : When the check_inventory() is triggered,the item is received as input
+                                                group function check_inventory_repo() Try 
+                                                    Repository -> Schema : The repository first queries the database to check the stock of the particular item
+ 
+                                                    note over Repository,Schema
+                                                        ** ORM OPERATION 2: CHECK INVENTORY**
+                                                        variable inventory assign db.query(Item)
+                                                        .filter(Item.item_name == item_name)
+                                                        .first()
+                                                    end note
+                                                    Database -> Repository : Closes the database connection
+                                                    deactivate Database
+ 
+                                                    Repository -> Repository : Create a variable inventory and store the order.stock_availability
+                                                end
+ 
+                                                group function check_inventory_repo() Exception
+                                                    note right Repository
+                                                        **Repository Exception Handler**
+                                                        except Exception as e:
+                                                           print("Error in repo",str(e))
+                                                            db.rollback()
+                                                            return None
+                                                       
+                                                    end note
+                                                    
+                                                end
+                                               
+ 
+                                                ' Repository -> Tool : Return the inventory of the item
+                                                deactivate Repository
+                                            end
+                                    
+ 
+                                    end
+                                    group place_order() 
+                                        Tool -> Tool: The place_order() is triggered,which stores the order in the order table
+                                        Tool -> Repository : It calls the place_order_repo() method using the repository variable,passing the  customer_id and list of item and stores in the variable order
+                                        activate Repository
+                                            Repository -> Repository : The Repository creates an instance for the class Database to connect with the database
+                                            group function place_order_repo() 
+                                                Repository-> Database : With the help of the db instance,create a session with the Database
+                                                activate Database
+                                                Database -> Repository: Establishes the connection
+                                                Repository -> Repository : When the place_order_repo() is triggered,the item is received as input
+                                                group function place_order_repo() Try 
+                                                    Repository -> Schema : The repository first queries to store the give customer id and store it in order variable now, add the order object to the db
+                                                     note over Repository,Schema
+                                                        ** ORM OPERATION 3: CHECK INVENTORY**
+                                                        order = Order(customer_id = customer_id)
+                                                        db.add(order)
+                                                        db.commit()
+                                                    end note
+                                                    Reposittory -> Schema: Take the items  iterate through the list and , fetch the price for the each item and multiple with quantity and store it in the total price
+ 
+                                                    note over Repository,Schema
+                                                        ** ORM OPERATION 4: CHECK INVENTORY**
+                                                        for item in items:
+                                                        name = item["item_name"]
+                                                        quantity = item["quantity"]
+                                                        item = db.query(Item).filter(Item.item_name.ilike(f"%{name}%")).first()
+                                                        if item:
+                                                            total += float(item.item_price)* quantity
+                                                            mapping = OrderItemMapping(
+                                                                order_id = order.order_id,
+                                                                item_id = item.item_id,
+                                                                quantity = quantity
+                                                            )
+                                                            db.add(mapping)
+                                                    db.commit()
+                                                    end note
+                                                    Database -> Repository : Closes the database connection
+                                                    deactivate Database
+ 
+                                                    Repository -> Repository: creates the return response that contains order_id , total_price , items
+                                                    
+                                                end
+ 
+                                                group function place_order_repo() Exception
+                                                    note right Repository
+                                                        **Repository Exception Handler**
+                                                        except Exception as e:
+                                                           print("Error in repo",str(e))
+                                                            db.rollback()
+                                                            return None
+                                                       
+                                                    end note
+                                                    
+                                                end
+                                               
+ 
+                                                ' Repository -> Tool : Return the inventory of the item
+                                                deactivate Repository
+                                            end
+                                    
+ 
+                                    end
+ 
+                                    
+                
+    deactivate Tool
+    'resourse
+    Router -> Resourse :system register the available Resourse like \ncheck_menu(),\n get_location()
+    group Resourse
+    activate Resourse
+    Resourse -> Resourse: The check_menu() is triggered,which lists the menu
+    Resourse -> Repository : It calls the check_menu_repo() method using the repository variable and assign this to menu
+    group check_menu() 
+    activate Repository
+        Repository -> Repository : The Repository creates an instance for the class Database to connect with the database
+        group function check_menu_repo()
+            Repository-> Database : With the help of the db instance,create a session with the Database
+            activate Database
+            Database -> Repository: Establishes the connection
+            Repository -> Repository : When the check_menu_repo() is triggered,it will list the items
+            group function check_menu_repo() Try 
+                Repository -> Schema : The repository first queries the database to list the menu items
+
+                note over Repository,Schema
+                    **ORM OPERATION 3: LIST MENU ITEMS**
+                    variable item assign db.query(Item).all()
+                end note
+                Database -> Repository : Closes the database connection
+                deactivate Database
+
+                Repository -> Repository : Create a list menu and store the menu's by iterating each item
+            end
+
+            group func check_menu_repo() exception
+                note right Repository
+                    **Repository Exception Handler**
+                    except Exception as e:
+                        print("Error in repo",str(e))
+                        db.rollback()
+                        return None
+                
+                end note
+            end
+        
+
+            ' Repository -> Tool : Return the inventory of the item
+            deactivate Repository
+        end
+    end
+    Resourse -> Resourse: The get_location() is triggerd and using it we can fetch json file which has the location details
+   
+        group get_location() 
+        Resourse -> Location: Go to the location file and fetch the details 
+        activate Location
+        note over Location
+        [
+        {
+            "location" : "Annanagar",
+            "open time" : "9.00 AM",
+            "close time" : "10.00 PM"
+            
+
+        },
+        {
+            "location" : "Navalur",
+            "open time" : "9.00 AM",
+            "close time" : "10.00 PM"
+        }
+        ]
+        end note 
+        deactivate Location
+        end
+
+    deactivate Resourse
+    end
+    'prompt
+    Router -> Prompt:system register the available prompts like \n diet_planning(),\nexplain_menu()
+    activate Prompt
+    Prompt -> Prompt: The diet_planning() is triggered
+    group function diet_planning() 
+        Prompt -> Promt : The idea of the prompt is , show the products with diet consious
+            note over Prompt
+            **prompt**
+             Help users choose items based on dietary preferences.
+           
+            - Low sugar -> suggest sugar-free or black coffee
+            - Vegan -> suggest plant-based milk options
+            - Low calorie -> suggest light drinks
+            - High protein -. suggest protein options
+           
+            Ask preferences if not given.
+            Give 2-3 simple suggestions.
+            Do not provide medical advice.
+            end note
+    end 
+    Prompt -> Prompt: The explain_menu() is triggered
+    group function explain_menu() 
+        Prompt -> Prompt : The idea of the prompt is , Help users understand the menu.
+
+         note over Prompt
+                **prompt**
+        
+        Help users understand the menu.
+       
+        - Use get_menu Resourse when needed
+        - Explain items in simple terms
+        - Suggest popular options if user is unsure
+       
+        Do not guess items not in the menu.
+        
+        end note
+    end 
+ 
+    deactivate Prompt
+deactivate Router  
+end  
+deactivate App
+@enduml
+
+
+                
+
+
+  
+
+
+
+                
+
+
+
+
+  
+                
+
+
+
+
+
+
+
+

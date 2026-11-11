@@ -1,0 +1,353 @@
+@startuml sequence_diagram 
+autonumber 1.0
+
+actor Client 
+participant "src/app.py" as App
+participant "src/models/request_dto.py" as ChatbotRequest
+participant "src/router/chatbot_routes.py" as Router
+participant "src/services/chatbot_service.py" as Service
+participant "src/agents/agent.py" as Agent
+Participant "src/agent/prompt.py" as SystemPrompt
+Participant "src/tool/MCPserverMcpClient" as McpSever
+
+note over App
+**App Imports**
+from numpy import outer
+import uvicorn
+from contextlib import asynccontextmanager
+ 
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from routes.router import routerapi
+from routes.chatbot_router import router
+from models.custome_app_exepction import CustomAppException
+from utils.errors.http_status import HttpStatusCode
+from models.api_response_dto import APIResponse, Error
+from utils.errors.error_codes import ErrorCode, ErrorCodeStatus
+from migrations.migration import Migration
+end note
+
+
+note over Router
+**Router Imports** 
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+from utils.errors.http_status import HttpStatusCode
+from services.chatbot_service import ChatbotService
+from models.custome_app_exepction import CustomAppException
+from utils.errors.error_codes import ErrorCode
+end note
+
+note over Service
+**Service Imports**
+from utils.errors.http_status import HttpStatusCode
+from repositories.chatbot_repository import ChatbotRepository
+from models.custome_app_exepction import CustomAppException
+from models.api_response_dto import APIResponse
+from utils.errors.error_codes import ErrorCode
+end note
+note over Agent
+  **Agent Imports**
+    from utils.constants.http_status import HttpStatusCode
+    from utils.exceptions.custom_exception import CustomAppException
+    from utils.constants.error_codes import ErrorCode
+end note
+note over ErrorCodes
+  **Error Codes**
+  class ErrorCode:
+      USER_NOT_FOUND = "UserNotFoundErrorCode"
+      DATABASE_ERROR = "DatabaseErrorErrorCode"
+      INTERNAL_SERVER_ERROR = "InternalServerErrorCode"
+      VALIDATION_ERROR = "ValidationErrorCode"
+end note
+ 
+note over HttpStatus
+  **HTTP Status Codes**
+  class HttpStatusCode:
+      OK = 200
+      CREATED = 201
+      BAD_REQUEST = 400
+      NOT_FOUND = 404
+      UNPROCESSABLE_ENTITY = 422
+      INTERNAL_SERVER_ERROR = 500
+end note
+
+Client -> App: POST/api/v1/chatbot{request_body: user_query}
+activate  App
+group App
+  App -> App : create instance for FastAPI by calling FastAPI Method and store it in variable app
+  App -> App : sets the accessibility for the origins, headers, methods to public using add_middleware available in app variable
+  App -> App : include the Router by calling app.include_router(Apirouter)
+
+  App -> App: cart creation endpoint function triggered which is mapped to route /api/v1/chatbot
+  App -> Router: chatbot_router(request: ChatBotRequest)
+
+  activate Router 
+  group function chatbot_router()
+  Router -> Router: The chatbot_router() is getting triggered - FastAPI matches HTTP post and routes to the path
+            group PydanticValidation Try Block
+                    alt PydanticValidation Success
+                    Router -> ChatbotRequest : The required fields to build a agentic bot  is validated using pydantic validation
+                    ChatbotRequest -> Router : ChatbotRequest class validated the fields and returns the fields
+                    end
+                    else PydanticValidation Failed
+                        ChatbotRequest -> Router : The exception is raised when the validation is failed in ChatbotRequest class
+                        group PydanticValidation Catch Exception
+                            note over Router
+                                **PydanticValidation Exception Handler**      
+                                except Exception as e:
+                                    raise CustomAppException(
+                                    message assign f"query:Field required: {str(e)}",
+                                    code assign ErrorCode.VALIDATION_ERROR,
+                                    status_code assign HttpStatusCode.VALIDATION_ERROR,
+                                )
+                            end note
+                        end
+            end
+            
+  
+  group chatbot_router() try
+    Router -> Router:  Create ChatbotService instance and stored in the variable service
+    Router -> Router: chatbot_router(request:ChatbotnRequest)
+    Router -> Service: service.chatbot_service(request)
+  Router -> Service: Created a method called chatbot_service() method is tiggered, the request data is received as input
+ 
+  activate Service
+    group function chatbot_service()
+        Service -> Service: The chatbot_service()  is getting triggered, the request data is received as input
+    group chatbot_service() try
+        Service -> Service : create a methods creat_pii_guardrails() with arguments user_query which is stored in the value
+        group creat_pii_guardrails() try
+        Service -> Service: The variable all_matches is created and stores the multiple methods
+        Service -> Service : apply_strategy() built in function is is used to change to redact, mask, hash
+        end
+        group creat_pii_guardrails() exception
+        Service -> Router: Raise a CustomAppException indicating a service error occurred fetchin the response, using the internal server error code, HTTP 500, and the corresponding error_code_id
+        Service --> Router:ropagate the newly raised CustomAppException to the router
+           Router -> Client : Raise a CustomAppException indicating a Service error occurred fetchin the response, using the internal server error code, HTTP 500, and the corresponding error_code_id
+          Router --> Client : Propagate the newly raised CustomAppException to the client
+       
+            note over Service, Router
+            Error Response (500 propagated):
+            {
+                "data": null,
+                "errors": [{
+                "code": "InternalServerErrorCode",
+                "message": "Service error : unexpected error",
+                
+                }],
+                "status_code": 500,
+                "request_id": "cc58739f-f6dc-475f-abf8-997c357a4899",
+                "message": "Service error : unexpected error"
+            }
+            end note
+            
+       
+        end
+
+        Service -> Service: The Service creates an instance for the class Agent to access the methods in the particular class
+
+        Service -> Agent: It calls the all the methods defined in the Agent class using the agent variable to perform various functions
+        Service -> Agent: it calls the chatbot_agent() method using the agent variable ,passing the request data as an argument and assign this to data
+
+
+        activate Agent
+            group function chatbot_agent()
+            Agent -> Agent: The customer_chatbot_agent() is getting triggered ,the request data is received as input
+            group chatbot_agent() try
+  
+            Agent -> Agent : This function will define which function to call next as a main function
+            Agent -> Agent: The Agent creates an instance for the class SystemPrompt to access the methods in the particular class
+            Agent -> Agent: It creates the SystemPrompt Instance and stored in the variable System_prompt
+                
+                Agent -> Agent: when the chatbot_agent() method is triggered, it calls the mcp_client() at first which will create and return a mcp client
+                group function mcp_client()
+                    Agent -> Agent: This fucntion will invoke the mcp_client() method, while creating the client, the URL of the server is given
+                    Agent -> Agent: The created client is stored in the varaible client and it is return to the chatbot_agent() method
+
+                    Agent -> McpSever: it goes to the server and calls the tools which defined , and perform the action accordingly 
+                    McpSever --> Agent: it returns the tools result to the client 
+                end
+                group function get_bedrock_client()
+                      Agent -> Agent : This function will invoke get_bedrock_client() method,by passing the service_name,region_name,secret_access_key,access_key_id
+                      Agent -> Agent : The created client is stored in the variable client and it is returned to chatbot_agent() method
+                end
+                  Agent --> Agent:The bedrock client is created and stored in the variable client
+                  Agent -> Agent : Next,the function will call get_llm() method by passing the client as a parameter which will create and return a ChatBedrock LLM instance and stored in the variable llm
+                    group func get_llm()
+                        Agent -> Agent : When get_llm() method is triggered,it will create instance of ChatBedrock() by passing client,model_id,provider,model_kwargs
+                        Agent -> Agent : The created instance is stored in the variable llm and it is returned to chatbot_agent() method
+                    end
+ 
+                    Agent --> Agent : The returned value from get_llm() method is store in the variable llm
+' from here editing should be done
+                    Agent -> Agent : The the inbuilt function load_mcp_components method is created and the session and user_query is passed inside as arguments 
+                    Agent -> Agent: the tools are loaded using load_mcp_tools and functions for keyword search for the menu dispaly 
+                    Agent -> Agent : The resouse are loaed using load_mcp_resource and handled the resource format
+                    Agent -> Agent : Next,the function will call get_system_prompt() method by which will get the systemprompt from the SystemPrompt Class
+                    Agent -> SystemPrompt: It calls the get_system_prompt() method using the prompt instance variable
+                    activate SystemPrompt
+                    group function get_system_prompt()
+                        SystemPrompt -> SystemPrompt : When get_system_prompt() method is triggered where system prompt is defined
+                        SystemPrompt -> SystemPrompt : The systemprompt is stored in the variable system_prompt and it is returned to chatbot_agent() method
+                    end
+                    deactivate SystemPrompt
+                    SystemPrompt -> Agent : Returns the system_prompt to the agent
+
+                    Agent --> Agent : The returned value from get_system_prompt() method is store in the variable system_prompt
+                    
+                    Agent --> Agent : The returned value from Tool function is store in the variable list tool
+                    Agent -> Agent : Next,the function will call create_agents() method by passing the prompt,tools and llm model as a parameter which will create a agent and stored in the variable agent
+                    group function create_agents()
+                        Agent -> Agent : When create_agents() method is triggered,it will create instance for the agent by passing prompt,tools,system prompt , prompt meassages ,structured ouput and llm model
+                        Agent -> Agent : Created a AsyncPostgresSaver with function and configured with db and kept as checkpointer
+                        Agent -> Agent : Using checkpointer.setup() function it automatically create a new table if table not exsits to store the thread id generated 
+                        Agent -> Agent : The created instance is stored in the variable agent
+                        Agent -> Agent : The create_agent inbuilt function is called with parameter of the ll, tools , checkpointer, response_format, middleware which has summarization middleware 
+                        group SummarizationMiddleware
+                        Agent -> Agent : The SummarizationMiddleware function has the args of model ,trigger,keep,summary_prompt 
+                        Agent --> Agent: What it actually does is when the contex window reaches the trigger limit the context will be summarized  
+                        end
+
+                        Agent -> Agent: The variable messages is created and stores the system message and  humman message 
+                        Agent -> Agent : the variable result is created and invoking the agent is done by giving the message and congifurable with thread id 
+                        Agent --> Agent : The invoked response is stored in the variable result and it is returned to chatbot_agent() method
+
+                    end
+                   
+                    ' group function invoke_agent()
+                    '     Agent -> Agent : When invoke_agent() method is triggered,it will invoke the agent by passing the user query as request and agent as their parameters
+                    '     Agent -> Agent : The invoked response is stored in the variable result and it is returned to chatbot_agent() method
+                    ' end
+
+                '     Agent --> Agent : The returned value from invoke_agent() method is store in the variable result
+
+                '     Agent -> Agent : Next,the function will call streaming() method by passing the agent as a parameter which will stream the response agent
+                '     group func streaming()
+                '         Agent -> Agent : When streaming() method is triggered,it will stream  the response  by passing the user query as request and agent as their parameters
+                '         Agent -> Agent : It will stream the response 
+                '     end
+                '  Agent --> Service: Returns the bot response to the service
+            end
+        deactivate Agent  
+        Agent --> Service: return the wrapped response from the agent
+        end
+        group chatbot_agent() exception
+        Agent -> Service : Raise a CustomAppException indicating a agent error occurred fetchin the response, using the internal server error code, HTTP 500, and the corresponding error_code_id
+        Agent -->Service  : Propagate the newly raised CustomAppException to the service
+        Service -> Router: Raise a CustomAppException indicating a service error occurred fetchin the response, using the internal server error code, HTTP 500, and the corresponding error_code_id
+        Service --> Router:ropagate the newly raised CustomAppException to the router
+        Router -> Client: Raise a CustomAppException indicating a Router error occurred fetchin the response, using the internal server error code, HTTP 500, and the corresponding error_code_id
+        Router --> Client:ropagate the newly raised CustomAppException to the client
+        
+
+            note over Agent, Service
+            Error Response (500 propagated):
+            {
+                "data": null,
+                "errors": [{
+                "code": "InternalServerErrorCode",
+                "message": "Agent error : unexpected error",
+                
+                }],
+                "status_code": 500,
+                "request_id": "cc58739f-f6dc-475f-abf8-997c357a4899",
+                "message": "Agent error : unexpected error"
+            }
+            end note
+        end note
+        end
+         Service --> Router : Returns the answer for the customer query
+            group chatbot_service() exception
+            Service -> Router: Raise a CustomAppException indicating a service error occurred fetchin the response, using the internal server error code, HTTP 500, and the corresponding error_code_id
+        Service --> Router:ropagate the newly raised CustomAppException to the router
+           Router -> Client : Raise a CustomAppException indicating a Service error occurred fetchin the response, using the internal server error code, HTTP 500, and the corresponding error_code_id
+          Router --> Client : Propagate the newly raised CustomAppException to the client
+       
+            note over Service, Router
+            Error Response (500 propagated):
+            {
+                "data": null,
+                "errors": [{
+                "code": "InternalServerErrorCode",
+                "message": "Service error : unexpected error",
+                
+                }],
+                "status_code": 500,
+                "request_id": "cc58739f-f6dc-475f-abf8-997c357a4899",
+                "message": "Service error : unexpected error"
+            }
+            end note
+            end
+       
+       
+        end
+        end
+        deactivate Service
+
+        Router -> App : Returns the answer for the customer query
+ 
+         group chatbot_router() exception
+        Router -> Client : Raise a CustomAppException indicating a Router error occurred fetchin the response, using the internal server error code, HTTP 500, and the corresponding error_code_id
+          Router --> Client : Propagate the newly raised CustomAppException to the client
+          note over Router, App
+          Error Response (500 propagated):
+          {
+            "data": null,
+            "errors": [{
+              "code": "InternalServerErrorCode",
+              "message": "Router error : unexpected error",
+              
+            }],
+            "status_code": 500,
+            "request_id": "cc58739f-f6dc-475f-abf8-997c357a4899",
+            "message": "Router error : unexpected error"
+          }
+          end note
+        end
+    end
+    end
+    
+    deactivate Router
+
+        App -> Client: return the successfull response to the client
+        note over App, Client
+        {
+    "data": {
+        "user_query": "is coffee available",
+        "response": "Coffee is available! It costs 100.00."
+    },
+    "errors": [],
+    "status_code": 200,
+    "request_id": "8d1ab4f9-2c02-492f-af27-7b0d6131a797",
+    "message": "Success"
+}
+        end note
+    deactivate App
+@enduml
+
+
+                
+
+
+  
+
+
+
+                
+
+
+
+
+  
+                
+
+
+
+
+
+
+
+

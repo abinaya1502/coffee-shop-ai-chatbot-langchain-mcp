@@ -1,0 +1,132 @@
+@startuml class_diagram
+skinparam classAttributeIconSize 0
+skinparam classFontSize 10
+skinparam Linetype Ortho
+ 
+package "Application Layer"{
+    class FastMCP <<src/app.py>> {
+        -app:FastMCP
+    }
+}
+
+package "Routes Layer" {
+    class mcp_router <<src/routes/mcp_server_router.py>> {
+        +from tools.tools import check_order_status
+        +from tools.tools import check_inventory
+        +from tools.tools import check_menu
+    } 
+}
+Package "Tool Layer"{
+    class Tool<<src/tools/tool.py>>{
+        -repository: ChatbotRepository
+        @mcp_tools
+        +check_order_status()
+        +check_inventory()
+        +place_order()
+        
+    }
+}
+package "Resourse Layer"{
+    class Resourse<<src/resourses/resourse.p>>{
+         @mcp_resource()
+        +get_menu()
+        +get_location()
+}
+}
+package "Prompt Layer"{
+    class Prompt<<src/Prompts/prompt.py>>{
+        +diet_plan()
+        +explain_menu()
+        +normal_prompt()
+    }
+}
+
+package "Repository Layer" {
+    class ChatbotRepository <<src/repositories/mcp_server_repository.py>> {
+        -db_instance: Database
+        +check_order_status_repo()
+        +check_menu_repo()
+        +check_inventory_repo()
+        +place_order_repo()
+    }
+   
+   
+}
+package "Schema Layer"{
+     class Customer <<src/repositories/schema.py>>{
+        
+        +customer_id: uuid
+        +customer_name: str
+        +customer_contact: str
+        +customer_email: str
+        +customer_address: str
+        +is_active: bool
+        +created_at: datetime
+        +created_by: str
+        +updated_at: datetime
+        +updated_by: str
+       
+    }
+    class Item <<src/repositories/schema.py>>{
+        +item_id: uuid
+        +item_name: str
+        +item_price: decimal
+        +stock_availability: int
+        +is_active: bool
+        +created_at: datetime
+        +created_by: str
+        +updated_at: datetime
+        +updated_by: str
+     
+    }
+    class Order <<src/repositories/schema.py>>{
+        +order_id: uuid
+        +customer_id: int
+        +order_status: str
+        +is_active: bool
+        +created_at: datetime
+        +created_by: str
+        +updated_at: datetime
+        +updated_by: str
+        --
+        +customer: Customer
+    }
+    class OrderItemMapping <<src/repositories/schema.py>>{
+        +order_item_mapping_id: uuid
+        +order_id: uuid
+        +item_id: uuid
+        +quantity: int
+        +is_active: bool
+        +created_at: datetime
+        +created_by: str
+        +updated_at: datetime
+        +updated_by: str
+        --
+        +order: Order
+        +item: Item
+    }
+ 
+}
+
+
+
+package "Database Layer"{
+    class Database <<src/repositories/database.py>>{
+        -engine: _create_engine
+        -SessionLocal: sessionmaker
+        + _create_engine(self)
+        +get_session(self)
+        +inspector(self, engine)
+        +test_connection(self)
+    }
+}
+
+FastMCP-->mcp_router 
+mcp_router --> Tool : calls
+mcp_router --> Resourse : calls
+mcp_router --> Prompt : calls
+Tool --> ChatbotRepository: calls
+Resourse --> ChatbotRepository: calls
+
+
+ChatbotRepository --> Database

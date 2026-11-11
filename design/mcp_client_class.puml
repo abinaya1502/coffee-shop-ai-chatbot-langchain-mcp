@@ -1,0 +1,150 @@
+@startuml class_diagram
+skinparam classAttributeIconSize 0
+skinparam classFontSize 10
+skinparam Linetype Ortho
+ 
+package "Application Layer"{
+    class FastAPI <<src/app.py>> {
+        -app:FastAPI
+    }
+}
+
+package "Routes Layer" {
+    class APIRouter <<src/routes/chatbot_router.py>> {
+        -service : ChatbotService          
+        +chatbot_router(request: ChatbotRequest)
+    } 
+}
+ 
+package "Service Layer" {
+    class ChatbotService <<src/services/chatbot_service.py>> {
+        -agent: Agent
+        +chatbot_service(request: ChatbotRequest)  
+    }
+   
+}
+
+
+
+package "Utility Layer" {
+    class CustomAppException <<src/utils/exceptions/custom_exception.py>>{
+        +message: str
+        +code: str
+        +status_code: int
+        +errors: List[Error]
+        --
+        +to_api_response(): APIResponse
+        +from_errors(): CustomAppException
+    }
+ 
+    class HttpStatusCode <<src/utils/constants/http_status.py>>{
+        +OK: int
+        +CREATED: int
+        +NO_CONTENT
+        +BAD_REQUEST: int
+        +UNAUTHORIZED: int
+        +FORBIDDEN: int
+        +NOT_FOUND: int
+        +CONFLICT: int
+        +UNPROCESSABLE_ENTITY: int        
+        +INTERNAL_SERVER_ERROR: int
+        +SERVICE_UNAVAILABLE: int
+    }
+ 
+    class ErrorCode <<src/utils/constants/error_codes.py>>{
+        +MISSING_ENV_VARS : str
+        +NO_ROWS_AFFECTED : str
+        +CONFLICT :str
+        +INVALID_JSON_FORMAT : str
+        +VALIDATION_ERROR :str
+        +MISSING_HEADERS : str
+        +MISSING_AUTHORIZATION_HEADER : str
+        +INVALID_AUTHORIZATION_HEADER : str
+        +EMPTY_AUTHORIZATION_HEADER : str
+        +MISSING_REQUESTER_ID_HEADER : str
+        +INVALID_REQUESTER_ID_HEADER : str
+        +EMPTY_REQUESTER_ID_HEADER : str
+        +INTERNAL_SERVER_ERROR : str
+        +DATABASE_ERROR : str
+        +SERIALIZE_EVENT_DATA : str
+        +COMMIT_TRANSACTION : str
+        +EXTERNAL_API_FAILED: str
+        +UNAUTHORIZED : str
+    }
+
+    
+}
+ 
+package "Agent layer"{
+    class Agent<<src/agents/agent.py>>{
+        
+        -prompt: SystemPrompt
+        +chatbot_agent()
+        +mcp_client()
+        +get_bedrock_client()
+        +get_llm()
+        +get_system_prompt()
+        +create_agent()
+        +invoke_agent()
+
+        ' +streaming()
+    }
+    class SystemPrompt<<src/agent/prompt.py>>{
+        +get_system_prompt()
+    } 
+}
+
+Agent --> SystemPrompt :calls
+
+package "Models" {
+    class Error  <<src/models/api_response_dto.py>>{
+        +code: int
+        +message: str
+        --
+        +to_dict(): dict
+ 
+    }
+    class APIResponse <<src/models/api_response_dto.py>>{
+        +data: Optional[Any]
+        +errors: List[Error]
+        +code: int
+        +message: str
+        --
+        +to_dict(): dict
+    }
+ 
+    class ChatbotRequest<<src/models/chatbot_dto.py>>{
+        +customer_uuid : str
+        +user_query:str
+    }
+ 
+    ' class OrderDetails <<src/models/chatbot_dto.py>>{
+    '     +item_name : str
+    '     +quantity :str
+    '     +price : decimal
+    ' }
+ 
+   
+}
+
+FastAPI --> APIRouter :calls
+ 
+' Route → Service
+APIRouter --> ChatbotService : calls
+ 
+ 
+' Service → agent
+ChatbotService --> Agent: calls
+
+
+Agent ..> CustomAppException : may raise
+ChatbotService ..> CustomAppException : may raise
+APIRouter ..> CustomAppException :may raise
+
+ 
+APIRouter --> ChatbotRequest : input validation
+ 
+CustomAppException --> ErrorCode :uses
+CustomAppException --> HttpStatusCode :uses
+APIResponse --> Error : contains
+CustomAppException --> APIResponse : converts_to
